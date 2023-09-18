@@ -178,8 +178,8 @@ class AnalyzeGPT(ChatGPT_Handler):
         super().__init__(**kwargs)
             
         table_schema = get_table_schema(sql_query_tool,sql_engine)
-        logger.info(f"table_schema: {table_schema}")
-        logger.info(f"system_message: {system_message}")
+        # logger.info(f"table_schema: {table_schema}")
+        # logger.info(f"system_message: {system_message}")
     
         system_message = f"""
         <<data_sources>>
@@ -197,7 +197,8 @@ class AnalyzeGPT(ChatGPT_Handler):
             old_user_content= self.conversation_history.pop() #removing old history
             old_user_content=old_user_content['content']+"\n"
         self.conversation_history.append({"role": "user", "content": old_user_content+updated_user_content})
-        logger.info("prompt input ", self.conversation_history)
+        logger.info("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$44")
+        logger.info("conversation_history_from_analyzer", self.conversation_history)
         logger.info(stop)
         n=0
         # import pdb
@@ -205,7 +206,8 @@ class AnalyzeGPT(ChatGPT_Handler):
         try:
 
             llm_output = self._call_llm(self.conversation_history, stop)
-            logger.info("llm_output \n", llm_output)
+            # logger.info("llm_output_from_analyzer \n", llm_output)
+
 
         except Exception as e:
             logger.info(str(e))
@@ -225,7 +227,8 @@ class AnalyzeGPT(ChatGPT_Handler):
 
             llm_output = "OPENAI_ERROR"     
              
-        logger.info("llm_output \n", llm_output)
+        logger.info("llm_output_from_analyzer_after_error \n", llm_output)
+        logger.info("$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$44")
         outputs = self.content_extractor.extract_output(llm_output)
         # print("llm_output ", llm_output)
         # print("extracted outputs: ", outputs)

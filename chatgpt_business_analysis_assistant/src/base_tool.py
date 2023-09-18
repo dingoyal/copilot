@@ -19,11 +19,18 @@ from typing import List
 import sys
 from io import StringIO
 import pyodbc
-from streamlit.logger import get_logger
-logger = get_logger(__name__)
+# from streamlit.logger import get_logger
+# logger = get_logger(__name__)
+
+import logging as logger
+
+# Configure the logger
+logger.basicConfig(level=logger.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 
 def validate_output( llm_output,extracted_output):
+    logger.info(f"extracted_output={extracted_output}")
     valid = False
     if "Final Answer:" in llm_output:
         return True
@@ -60,32 +67,51 @@ class ChatGPT_Handler: #designed for chatcompletion API
 
         return llm_output
     def extract_code_and_comment(self,entire_input, python_codes):
+        # import pdb;pdb.set_trace()
         # print("entire_input: \n", entire_input)
         remaing_input = entire_input
         comments=[]
+        logger.info(f"python_codes={python_codes}")
         for python_code in python_codes:
-            temp_python_code = "```python\n"+python_code+"```"
-            text_before = remaing_input.split(temp_python_code)[0]
-            comments.append(text_before)
-            remaing_input = remaing_input.split(temp_python_code)[1]
+            try:
+                temp_python_code = "```python\n"+python_code+"```"
+                logger.info(f"temp_python_code={temp_python_code}")
+                text_before = remaing_input.split(temp_python_code)[0]
+                logger.info(f"text_before={text_before}")
+                remaing_input = remaing_input.split(temp_python_code)[1]
+                comments.append(text_before)
+                logger.info(f"remaing_input={remaing_input}")
+            except Exception as e:
+                logger.error(str(e))
+                temp_python_code = "\n"+python_code+"\n"
+                logger.info(f"temp_python_code={temp_python_code}")
+                text_before = remaing_input.split(temp_python_code)[0]
+                logger.info(f"text_before={text_before}")
+                comments.append(text_before)
+                remaing_input = remaing_input.split(temp_python_code)[1]
+                logger.info(f"remaing_input={remaing_input}")
         return comments, remaing_input
+    
     def extract_output(self, text_input):
             # print("text_input\n",text_input)
+            # import pdb
+            # pdb.set_trace()
+            logger.info(f"text_input={text_input}")
             outputs=[]
+            logger.info(f"extract_patterns={self.extract_patterns}")
             for pattern in self.extract_patterns: 
+                logger.info(f"pattern={pattern}")
                 if "python" in pattern[1]:
-
                     python_codes = re.findall(pattern[1], text_input, re.DOTALL)
+                    logger.info(f"python_codes={python_codes}")
+                    if len(python_codes)==0:
+                        python_codes = re.findall(pattern[2], text_input, re.DOTALL)
+                    logger.info(f"python_codes={python_codes}")
                     comments, text_after= self.extract_code_and_comment(text_input, python_codes)
                     # print("text_after ", text_after)
                     for comment, code in zip(comments, python_codes):
                         outputs.append({"python":code, "comment":comment})
                     outputs.append({"text_after":text_after})
-                elif "engineer" in pattern[1]:
-                    request = re.findall(pattern[1], text_input, re.DOTALL)
-                    if len(request)>0:
-                        outputs.append({"request_to_data_engineer":request[0]})
-
             return outputs
     def get_next_steps(self, user_question, assistant_response, stop):
         # st.write(f"assistant_response: {assistant_response}")
@@ -100,13 +126,15 @@ class ChatGPT_Handler: #designed for chatcompletion API
         # import pdb
         # pdb.set_trace()
         logger.info("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++")
-        logger.info(f"conversation_history={self.conversation_history}")
+        logger.info("conversation_history %r",self.conversation_history)
         logger.info(f"stop={stop}")
+        # import pdb
+        # pdb.set_trace()
         try:
             llm_output = self._call_llm(self.conversation_history, stop)
             # st.write(f"llm_output={llm_output}")
-            logger.info(f"llm_output={llm_output}")
-            logger.info("**************************************************************************************************")
+            logger.info("llm_output %r",llm_output)
+            logger.info("************ **************************************************************************************")
 
         except Exception as e:
             logger.error(str(e))
@@ -118,6 +146,7 @@ class ChatGPT_Handler: #designed for chatcompletion API
                 try:
                     llm_output = self._call_llm(self.conversation_history, stop)
                 except Exception as e:
+                    logger.error(str(e))
                     n +=1
 
                     print(f"error calling open AI, I am retrying 5 attempts , attempt {n}")
@@ -131,7 +160,10 @@ class ChatGPT_Handler: #designed for chatcompletion API
         if len(llm_output)==0:
             return "",[]
         if not validate_output(llm_output, outputs): #wrong output format
+            logger.info("======================WRONG_OUTPUT_FORMAT==============================")
             llm_output = "WRONG_OUTPUT_FORMAT"
+        # import pdb
+        # pdb.set_trace()
         return llm_output,outputs
 
 class SQL_Query(ChatGPT_Handler):
@@ -158,26 +190,27 @@ class SQL_Query(ChatGPT_Handler):
             # logger.info("inside sqlserver engine")
             # logger.info(query)
             try:
-                connecting_string = f'Driver={{ODBC Driver 17 for SQL Server}};Server=tcp:{self.dbserver};database={self.database};UID={self.db_user};PWD={self.db_password};MultipleActiveResultSets=true;'
+                # connecting_string = f'Driver={{ODBC Driver 17 for SQL Server}};Server=tcp:{self.dbserver};database={self.database};UID={self.db_user};PWD={self.db_password};MultipleActiveResultSets=true;'
                 # connecting_string = f"Driver={{ODBC Driver 17 for SQL Server}};Server=tcp:{self.dbserver},1433;Database={self.database};Uid={self.db_user};Pwd={self.db_password}"
-                params = parse.quote_plus(connecting_string)
+                # params = parse.quote_plus(connecting_string)
 
-                engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params)
-                # engine = pyodbc.connect(f'Driver={{ODBC Driver 17 for SQL Server}};'
-                        # f'Server=tcp:{self.dbserver};'
-                        # f'database={self.database};'
-                        # f'UID={self.db_user};'
-                        # f'PWD={self.db_password};'
-                        # 'MultipleActiveResultSets=true;')
-                # logger.info(engine)
+                # engine = create_engine("mssql+pyodbc:///?odbc_connect=%s" % params, connect_args={'connect_timeout': 200})
+                engine = pyodbc.connect(f'Driver={{ODBC Driver 17 for SQL Server}};'
+                        f'Server=tcp:{self.dbserver};'
+                        f'database={self.database};'
+                        f'UID={self.db_user};'
+                        f'PWD={self.db_password};'
+                        'MultipleActiveResultSets=true;')
+                logger.info(engine)
             except Exception as e:
+                logger.info("error_while_making_sql_conn", str(e))
                 # params = urllib.parse.quote_plus("DRIVER={SQL Server Native Client 11.0};"
                 #                  "SERVER=dagger;"
                 #                  "DATABASE=test;"
                 #                  "UID=user;"
                 #                  "PWD=password")
 
-                engine = sa.create_engine("mssql+pyodbc:///?odbc_connect={}".format(params))
+                engine = sa.create_engine("mssql+pyodbc:///?odbc_connect={}".format(params), connect_args={'connect_timeout': 200})
                 # logger.info(query)
                 # logger.info("error", str(e))
                 # logger.info(engine)

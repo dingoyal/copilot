@@ -7,6 +7,7 @@ import plotly.express as px
 import plotly.graph_objs as go
 from data_engineer import SQL_Data_Preparer
 from data_scientist import Data_Analyzer
+from llama import llama_response
 import openai
 import streamlit as st  
 
@@ -31,10 +32,11 @@ sqllite_db_path= os.environ.get("SQLITE_DB_PATH","data/northwind.db")
 faq_dict = {  
     "ChatGPT": [  
         "Show me trends in DAU for last 1 year",  
-        "Show me DAU forecast for next 6 months for APAC",  
-        "Plot Actual and Forecast for UGB",  
-        "Show me top 5 growing geo in DAU", 
-        "Show me top 5 growing geo in UGB" 
+        "Show me DAU forecast for next 6 months for APAC geo", 
+        "Show me top 5 growing geos in DAU Forecast", 
+        "Show me top 5 trending geo in DAU EDU segment",
+        "Plot  DAU forecast for Commercial segment for next 6 months",
+        "Show the DAU Forecast for US EDU and then adjust the future projection by reducing it by 10% and visualize the before and after forecast"
     ],  
     "GPT-4": [  
         "Predict monthly revenue for next 6 months starting from June-2018. Do not use Prophet.",  
@@ -43,7 +45,7 @@ faq_dict = {
 }  
 st.sidebar.title('What-If Analysis Assistant')
 # add a logo for the What-If Analysis Assistant in streamlit    
-st.sidebar.image("media/whatif_logo.jfif", width=50)
+st.sidebar.image("media/whatif_logo.png", width=50)
 
 
 
@@ -73,6 +75,7 @@ dbserver = load_setting("SQL_SERVER")
 database = load_setting("SQL_DATABASE")
 db_user = load_setting("SQL_USER")
 db_password = load_setting("SQL_PASSWORD")
+replicate_key = load_setting("REPLICATE_KEY")
 
 
 
@@ -115,6 +118,8 @@ with st.sidebar:
         gpt_engine = gpt4_deployment  
         faq = faq_dict["GPT-4"]  
     option = st.selectbox('FAQs',faq)  
+    
+        
 
     if gpt_engine!="":
     
@@ -127,7 +132,7 @@ with st.sidebar:
                             gpt_deployment=gpt_engine,max_response_tokens=max_response_tokens,token_limit=token_limit,
                             temperature=temperature)  
         
-        analyzer = Data_Analyzer(st=st,gpt_deployment=gpt_engine,max_response_tokens=max_response_tokens,token_limit=token_limit,
+        analyzer = Data_Analyzer(sql_engine=sql_engine,st=st,dbserver=dbserver,db_path=sqllite_db_path, database=database, db_user=db_user ,db_password=db_password, gpt_deployment=gpt_engine,max_response_tokens=max_response_tokens,token_limit=token_limit,
                             temperature=temperature)  
 
     show_code = st.checkbox("Show code", value=False)  
@@ -136,6 +141,7 @@ with st.sidebar:
     question = st.text_area("Ask me a question", option)
     openai.api_key = api_key
     openai.api_base = endpoint
+    result = ""
   
     if st.button("Submit"):  
         if chatgpt_deployment=="" or endpoint=="" or api_key=="":
@@ -145,4 +151,12 @@ with st.sidebar:
                 if "AZURE_OPENAI" not in key and "settings" and "SQL" not in key : 
                     del st.session_state[key]  
 
-            analyzer.run(question,data_preparer,show_code,show_prompt, col1)  
+            analyzer.run(question,data_preparer,show_code,show_prompt, col1) 
+
+    with st.expander("Market Research Analyst"):
+        ques = st.text_area("Ask me a question")
+        sub= ""
+        if st.button("Submit", sub): 
+            result= llama_response(ques, replicate_key)
+if result != "":
+    st.write(result)

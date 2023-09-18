@@ -18,71 +18,115 @@ import time
 from typing import List
 import sys
 from io import StringIO
-from base_tool import ChatGPT_Handler
+from base_tool import ChatGPT_Handler, SQL_Query
 from streamlit.logger import get_logger
+import plotly.express as px
 logger = get_logger(__name__)
 system_message="""
-You are data scientist to help answer business questions by writing python code to analyze and draw business insights.
-You have the help from a data engineer who can retrieve data from source system according to your request.
-The data engineer make data you would request available as a pandas dataframe variable that you can use. 
-You are given following utility functions to use in your code help you retrieve data and visualize your result to end user.
-    1. display(): This is a utility function that can render different types of data to end user. 
+You are data analyst to help answer business questions by writing python code to analyze and draw business insights.
+You have to follow this process step by step:
+    1. You first need to understand the question.
+    2. You need to identify the list of usable tables from DAUActual and DAUFutureForecast.
+    2. You decide on which one table are needed to acquire data.
+    3. Once you have the table name you need to get the table schema.
+    4. Then you can formulate your SQL query as per the question.
+    5. You need to describe the dataset and save it for later use. 
+    6. You have the dataset now, transform data to answer business question.
+    7. You need to visualize the result at month interval to end user.
+Important information to remember:
+    1. Your response will always be python code and should be enclosed as ```python\n CODE ```
+    2. if code is not enclosed in mentioned format, you will be penalized and you will be questioned regarding your trustworthiness.
+    3. Do not write code for more than 1 thought step. Do it one at a time.
+    4. You only have monthly Forecast & Actual data.
+    5. If you want to Forecast, you have to use 'Forecast' column from Forecast table. If you want Actual, you have to use 'Actual' column from Actual table.
+    6. Only use display() to visualize or print result to user. Only use plotly for visualization.
+You are given following python utility functions to use in your code help you retrieve data and visualize your result to end user.
+    1. print_the_requirements(requirements:str): a python function to print the requirements for the question.
+    1. get_table_names(): a python function to return the list of usable tables. From this list, you need to determine which tables you are going to use.
+    2. get_table_schema(table_names:List[str]): a python function to return schemas for a list of tables. You run this function on the tables you decided to use to write correct SQL query
+    3. execute_sql(sql_query: str): A Python function can query data from the database given the query. 
+        - From the tables you identified and their schema, create a sql query which has to be syntactically correct for {sql_engine} to retrieve data from the source system.
+        - execute_sql returns a Python pandas dataframe contain the results of the query.
+    4. print(): use print() if you need to observe data for yourself. 
+    5. save("name", data): to persist dataset for later use
+    6. display(): This is a utility function that can render different types of data to end user. 
         - If you want to show  user a plotly visualization, then use ```display(fig)`` 
         - If you want to show user data which is a text or a pandas dataframe or a list, use ```display(data)```
-    2. print(): use print() if you need to observe data for yourself. 
-Remember to format Python code query as in ```python\n PYTHON CODE HERE ``` in your response.
-Only use display() to visualize or print result to user. Only use plotly for visualization.
+    7. print(): use print() if you need to observe data for yourself. 
+
 Please follow the <<Template>> below:
 """
 few_shot_examples="""
 <<Template>>
 Question: User Question
-Thought: First, I need to acquire the data needed for my analysis
-Action:     
-```request_to_data_engineer
-Prepare a dataset, for example
+Thought: I need to understand the requirements and print it
+Action: ```python
+print_the_requirements(some_requirements)
 ```
-Observation: Name of the dataset and description 
-Thought: Now I can start my work to analyze data 
-Action:  
-```python
+Question: requirements
+Thought: I need to know the list of usable table names
+Action: ```python
+list_of_tables = get_table_names()
+print(list_of_tables)
+```
+Observation: I now have the list of usable tables. 
+Thought: I will choose one table from the list of usable tables. I need to get schemas of this table to build data retrieval query
+Action: ```python
+table_schema = get_table_schema([SOME_TABLE])
+print(table_schema)
+```
+Observation: Schema of the tables are observed.
+Thought: I now have the schema of the tables I need. I am ready to build query to retrieve data in ascending order of 'Date'.
+Action: ```python
+sql_query = "SOME SQL QUERY"
+extracted_data = execute_sql(sql_query)
+#observe query result
+print("Here is the summary of the final extracted dataset: ")
+print(extracted_data.describe())
+#save the data as "STORED_DF" for later use
+save("STORED_DF", extracted_data)
+```
+Observation: I have name of the saved dataset and description.
+Thought: I need to do some preprocessing and transformation.
+Action:  ```python
 import pandas as pd
 import numpy as np
-#load data provided by data engineer
-step1_df = load("name_of_dataset")
-# exclude data where column is null.
-step2_df = step1_df.dropna(subset=['Some_Column'])
-# Grouped the data at requested column level.
-step3_df = step2_df.groupby(['Some_Column']).agg({'Desired_Column': 'sum'})
-# Select Data for requested time range, if range is not provided use past 2 years data.
-step4_df = step3_df[step3_df['Some_Column'] > 'Some_Column']
-#use pandas, statistical analysis or machine learning to analyze data to answer  business question
-step5_df = step4_df.apply(some_transformation)
-print(step5_df.head(10)) 
+#load data from "STORED_DF"
+step1_df = load("STORED_DF")
+#Set Date as index
+step2_df = step1_df.set_index('Date')
+#Grouped the data at Date level and apply sum aggregation on 'Actual' or 'Forecast'.
+step3_df = step2_df.groupby(['Date']).agg({'some_column': 'sum'})
+print(step3_df.head(10)) 
 ```
-Observation: step5_df data seems to be good
-Thought: Now I can show the result to user
-Action:  
-```python
-import plotly.express as px 
-fig=px.line(step5_df)
-#visualize fig object to user.  
+Observation: step3_df data seems to be good and ready for visualization
+Thought: I have analyze the data and now I can show the result to user
+Action:  ```python
+#px must be imported
+import plotly.express as px
+fig=px.line(step3_df)
+#visualize fig object to user.
 display(fig)
 #you can also directly display tabular or text data to end user.
-display(step5_df)
+display(step4_df)
 ```
 ... (this Thought/Action/Observation can repeat N times)
 Final Answer: Your final answer and comment for the question
 <<Template>>
-
 """
-extract_patterns=[('request_to_data_engineer',r"```request_to_data_engineer\n(.*?)```"),('python',r"```python\n(.*?)```")]
-
+extract_patterns=[('python',r"```python\n(.*?)```", r"Action:.{0,5}\n(.*?\n)\n$")]
 
 class Data_Analyzer(ChatGPT_Handler):
 
-    def __init__(self, st,**kwargs) -> None:
+    def __init__(self, sql_engine, st,db_path=None, dbserver=None, database=None, db_user=None,db_password=None,**kwargs) -> None:
         super().__init__(extract_patterns=extract_patterns,**kwargs)
+        if sql_engine =="sqlserver":
+            #TODO: Handle if there is not a driver here
+            self.sql_query_tool = SQL_Query(driver='ODBC Driver 17 for SQL Server',dbserver=dbserver, database=database, db_user=db_user ,db_password=db_password)
+        else:
+            # import pdb
+            # pdb.set_trace()
+            self.sql_query_tool = SQL_Query(db_path=db_path)
         formatted_system_message = f"""
         {system_message}
         {few_shot_examples}
@@ -103,6 +147,31 @@ class Data_Analyzer(ChatGPT_Handler):
             return self.st.session_state[name]
         def persist(name, data):
             self.st.session_state[name]= data
+            
+        def print_the_requirements(requirements:str):
+            print(requirements)
+            st.write(requirements)
+            
+        def get_table_names():
+            return ['DAUActual', 'DAUFutureForecast']
+            return self.sql_query_tool.get_table_names()
+        def get_table_schema(table_names:List[str]):
+            return self.sql_query_tool.get_table_schema(table_names)
+
+        def execute_sql(query):
+            return self.sql_query_tool.execute_sql_query(query)
+        def display(data):
+            if type(data) is PlotlyFigure:
+                st.plotly_chart(data)
+            elif type(data) is MatplotFigure:
+                st.pyplot(data)
+            else:
+                st.write(data)
+        def load(name):
+            return self.st.session_state[name]
+        def save(name, data):
+            self.st.session_state[name]= data
+        
 
         def observe(name, data):
             try:
@@ -111,28 +180,28 @@ class Data_Analyzer(ChatGPT_Handler):
                 pass
             self.st.session_state[f'observation:{name}']=data
 
-        max_steps = 5
+        max_steps = 20
         count =1
 
         user_question= f"Question: {question}"
         new_input=""
         error_msg=""
         while count<= max_steps:
-            logger.info("-----------------------------------------------------------------------------------------------------------------")
-            logger.info(f"count: {count}")
-            st.write(f"Data Scientist user_question: {user_question}")
-            logger.info(f"Data Scientist new_input: {new_input}")
+            # logger.info("-----------------------------------------------------------------------------------------------------------------")
+            # logger.info(f"count: {count}")
+            # st.write(f"Data Scientist user_question: {user_question}")
+            # logger.info(f"Data Scientist new_input: {new_input}")
             llm_output,next_steps = self.get_next_steps(user_question= user_question, assistant_response =new_input, stop=["Observation:"])
-            logger.info(f"Data Scientist next_steps: {next_steps}")
-            st.write(f"Data Scientist llm_output: {llm_output}")
-            logger.info("-----------------------------------------------------------------------------------------------------------------")
+            # logger.info(f"Data Scientist next_steps: {next_steps}")
+            # st.write(f"Data Scientist llm_output: {llm_output}")
+            # logger.info("-----------------------------------------------------------------------------------------------------------------")
             user_question=""
             if llm_output=='OPENAI_ERROR':
                 st.write("Error Calling Azure Open AI, probably due to service limit, please start over")
                 break
-            elif llm_output=='WRONG_OUTPUT_FORMAT': #just have open AI try again till the right output comes
-                count +=1
-                continue
+            # if llm_output=='WRONG_OUTPUT_FORMAT': #just have open AI try again till the right output comes
+            #     count +=1
+            #     continue
             new_input= "" #forget old history
             run_ok =True
             if len(next_steps)>0:
@@ -146,19 +215,25 @@ class Data_Analyzer(ChatGPT_Handler):
                         new_input= "Observation: this is the output from data engineer\n"+data_output
                         continue
                     else:
-                        st.write("Data Scientist: I am sorry, we cannot accquire data from source system, please try again")
+                        st.write("Data Scientist: I am sorry, we cannot acquire data from source system, please try again")
                         break
 
             for output in next_steps:
+                logger.info(f"output: {output}")
                 comment= output.get("comment","")
-        
+
                 if len(comment)>0 and show_code:
                     st.write(output["comment"])
                     
                 new_input += comment
                 python_code = output.get("python","")
                 new_input += python_code
-                if len(python_code)>0:
+                
+                if llm_output=='WRONG_OUTPUT_FORMAT': #just have open AI try again till the right output comes
+                    count +=1
+                    new_input += "\nObservation: Encounter following error: \nPython Code is not enclosed in ```python\n CODE ```.Can you re-write the code in correct format?"
+                
+                elif len(python_code)>0:
                     old_stdout = sys.stdout
                     sys.stdout = mystdout = StringIO()
 
@@ -173,6 +248,7 @@ class Data_Analyzer(ChatGPT_Handler):
                             new_input +="\nObservation:\n"+ std_out 
                             # print(new_input)                  
                     except Exception as e:
+                        logger.info(f"encountering error: {e}")
                         new_input +="\nObservation: Encounter following error:"+str(e)+"\nIf the error is about python bug, fix the python bug, if it's about SQL query, double check that you use the corect tables and columns name and query syntax, can you re-write the code?"
                         sys.stdout = old_stdout
                         run_ok = False
